@@ -5,6 +5,7 @@
     <color name="acento">#4F8CFF</color>
     <color name="rojo">#E5484D</color>
     <color name="texto">#F2F4F7</color>
+    <color name="icono_fondo">#FFFDCA</color>
     <color name="texto_suave">#9AA3AF</color>
 
     <style name="Theme.Subtitulos" parent="Theme.Material3.Dark.NoActionBar">

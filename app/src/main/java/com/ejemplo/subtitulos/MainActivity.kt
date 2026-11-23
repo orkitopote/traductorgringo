@@ -7,7 +7,9 @@ import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Bundle
 import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
 import android.util.TypedValue
+import android.view.View
 import android.view.WindowManager
 import android.widget.TextView
 import android.widget.Toast
@@ -20,23 +22,29 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
+import java.util.Locale
 
 class MainActivity : AppCompatActivity(), SpeechEngine.Listener {
 
     private lateinit var tvStatus: TextView
-    private lateinit var tvLiveEn: TextView
-    private lateinit var tvLiveEs: TextView
+    private lateinit var tvLiveSource: TextView
+    private lateinit var tvLiveTarget: TextView
     private lateinit var rvHistory: RecyclerView
     private lateinit var btnMic: MaterialButton
+    private lateinit var btnDirection: MaterialButton
     private lateinit var swOffline: MaterialSwitch
 
     private lateinit var speech: SpeechEngine
     private val translator = TranslatorEngine()
-    private val adapter = SubtitleAdapter()
+    private val adapter = SubtitleAdapter { line -> speakEnglish(line) }
 
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
+
+    private var direction = Direction.EN_ES
     private var listening = false
     private var textScale = 1f
-    private var liveSeq = 0          // evita mostrar traducciones parciales viejas
+    private var liveGen = 0          // cambia al terminar cada frase: descarta parciales viejos
     private var mutedBeep = false
 
     private val micPermission =
@@ -50,7 +58,7 @@ class MainActivity : AppCompatActivity(), SpeechEngine.Listener {
         setContentView(R.layout.activity_main)
 
         // Respetar barras del sistema (Android 15 dibuja de borde a borde)
-        val root = findViewById<android.view.View>(R.id.root)
+        val root = findViewById<View>(R.id.root)
         val basePad = root.paddingLeft
         ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -59,10 +67,12 @@ class MainActivity : AppCompatActivity(), SpeechEngine.Listener {
         }
 
         tvStatus = findViewById(R.id.tvStatus)
-        tvLiveEn = findViewById(R.id.tvLiveEn)
-        tvLiveEs = findViewById(R.id.tvLiveEs)
+        findViewById<TextView>(R.id.tvTitle).text = "${getString(R.string.app_name)}  v${BuildConfig.VERSION_NAME}"
+        tvLiveSource = findViewById(R.id.tvLiveEn)
+        tvLiveTarget = findViewById(R.id.tvLiveEs)
         rvHistory = findViewById(R.id.rvHistory)
         btnMic = findViewById(R.id.btnMic)
+        btnDirection = findViewById(R.id.btnDirection)
         swOffline = findViewById(R.id.swOffline)
 
         rvHistory.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
@@ -70,11 +80,20 @@ class MainActivity : AppCompatActivity(), SpeechEngine.Listener {
 
         speech = SpeechEngine(this, this)
 
+        // Recordar el último sentido elegido
+        val prefs = getPreferences(MODE_PRIVATE)
+        direction = Direction.entries.getOrElse(prefs.getInt("direction", 0)) { Direction.EN_ES }
+        applyDirection()
+
+        btnDirection.setOnClickListener {
+            direction = if (direction == Direction.EN_ES) Direction.ES_EN else Direction.EN_ES
+            prefs.edit().putInt("direction", direction.ordinal).apply()
+            applyDirection()
+        }
         btnMic.setOnClickListener { if (listening) stopListening() else askAndStart() }
         findViewById<MaterialButton>(R.id.btnClear).setOnClickListener {
             adapter.clear()
-            tvLiveEn.text = ""
-            tvLiveEs.text = ""
+            clearLive()
         }
         findViewById<MaterialButton>(R.id.btnClear).setOnLongClickListener {
             copyTranscript(); true
@@ -83,7 +102,16 @@ class MainActivity : AppCompatActivity(), SpeechEngine.Listener {
         findViewById<MaterialButton>(R.id.btnSmaller).setOnClickListener { changeScale(-0.15f) }
         swOffline.setOnCheckedChangeListener { _, checked ->
             speech.preferOffline = checked
-            if (listening) { speech.stop(); speech.start() }
+            restartIfListening()
+        }
+
+        // Voz en inglés para escuchar la pronunciación al tocar una frase
+        tts = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                val r = tts?.setLanguage(Locale.US)
+                ttsReady = r != TextToSpeech.LANG_MISSING_DATA && r != TextToSpeech.LANG_NOT_SUPPORTED
+                tts?.setSpeechRate(0.9f)
+            }
         }
 
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
@@ -94,12 +122,29 @@ class MainActivity : AppCompatActivity(), SpeechEngine.Listener {
         prepareTranslator()
     }
 
+    private fun applyDirection() {
+        btnDirection.text = direction.label
+        speech.language = direction.speechLocale
+        translator.direction = direction
+        tvLiveSource.hint = direction.sourceHint
+        tvLiveTarget.hint = direction.targetHint
+        clearLive()
+        restartIfListening()
+    }
+
+    private fun restartIfListening() {
+        if (listening) {
+            speech.stop()
+            speech.start()
+        }
+    }
+
     private fun prepareTranslator() {
-        tvStatus.text = "Descargando modelo de traducción inglés→español (~30 MB, solo la primera vez)…"
+        tvStatus.text = "Descargando modelo de traducción (~30 MB, solo la primera vez)…"
         tvStatus.setOnClickListener(null)
         translator.prepare(
             onReady = {
-                tvStatus.text = "Listo. Pulsa Escuchar y acerca el teléfono al audio en inglés."
+                tvStatus.text = "Listo. Pulsa Escuchar. Toca una frase para oírla en inglés."
                 btnMic.isEnabled = true
             },
             onError = {
@@ -117,6 +162,7 @@ class MainActivity : AppCompatActivity(), SpeechEngine.Listener {
     }
 
     private fun startListening() {
+        tts?.stop()
         listening = true
         btnMic.text = "■  Detener"
         btnMic.setBackgroundColor(ContextCompat.getColor(this, R.color.rojo))
@@ -128,38 +174,42 @@ class MainActivity : AppCompatActivity(), SpeechEngine.Listener {
     private fun stopListening() {
         listening = false
         speech.stop()
+        translator.cancelPartials()
         muteBeep(false)
         btnMic.text = "▶  Escuchar"
         btnMic.setBackgroundColor(ContextCompat.getColor(this, R.color.acento))
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        tvStatus.text = "En pausa. Mantén pulsado Borrar para copiar la transcripción."
+        tvStatus.text = "En pausa. Toca una frase para oírla en inglés; mantén Borrar para copiar todo."
     }
 
     // ---- SpeechEngine.Listener ----
 
     override fun onPartial(text: String) {
-        tvLiveEn.text = text
-        val seq = ++liveSeq
-        translator.translate(text) { es ->
-            if (seq == liveSeq) tvLiveEs.text = es
+        tvLiveSource.text = text
+        // Con audio rápido la frase crece mucho: traducimos solo el final,
+        // que es lo que se está diciendo ahora. La frase completa se traduce al terminar.
+        val tail = lastWords(text, 28)
+        val gen = liveGen
+        translator.translatePartial(tail) { result ->
+            if (gen == liveGen) {
+                tvLiveTarget.text = if (tail.length < text.length) "… $result" else result
+            }
         }
     }
 
     override fun onFinal(text: String) {
-        val line = Line(text, "…")
+        val line = Line(text, "…", direction.sourceIsEnglish)
         adapter.add(line)
         rvHistory.scrollToPosition(adapter.itemCount - 1)
-        liveSeq++
-        tvLiveEn.text = ""
-        tvLiveEs.text = ""
-        translator.translate(text) { es ->
-            line.spanish = es
+        clearLive()
+        translator.translateFinal(text) { result ->
+            line.target = result
             adapter.refresh(line)
         }
     }
 
     override fun onStatus(text: String) {
-        if (listening) tvStatus.text = text
+        if (listening) tvStatus.text = "$text  (${direction.label})"
     }
 
     override fun onFatalError(message: String) {
@@ -167,7 +217,33 @@ class MainActivity : AppCompatActivity(), SpeechEngine.Listener {
         tvStatus.text = message
     }
 
+    // ---- Práctica: escuchar la pronunciación ----
+
+    private fun speakEnglish(line: Line) {
+        val english = line.english
+        if (english.isBlank() || english == "…") return
+        if (!ttsReady) {
+            toast("Instala la voz en inglés en Ajustes > Texto a voz.")
+            return
+        }
+        // Si seguimos escuchando, el micrófono captaría la voz del teléfono
+        if (listening) stopListening()
+        tts?.speak(english, TextToSpeech.QUEUE_FLUSH, null, "frase")
+    }
+
     // ---- Utilidades ----
+
+    private fun clearLive() {
+        liveGen++
+        translator.cancelPartials()
+        tvLiveSource.text = ""
+        tvLiveTarget.text = ""
+    }
+
+    private fun lastWords(text: String, max: Int): String {
+        val words = text.split(' ').filter { it.isNotBlank() }
+        return if (words.size <= max) text else words.takeLast(max).joinToString(" ")
+    }
 
     /** El reconocedor emite un pitido cada vez que se reinicia; lo silenciamos mientras se escucha. */
     private fun muteBeep(mute: Boolean) {
@@ -186,8 +262,8 @@ class MainActivity : AppCompatActivity(), SpeechEngine.Listener {
 
     private fun changeScale(delta: Float) {
         textScale = (textScale + delta).coerceIn(0.7f, 2.5f)
-        tvLiveEn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f * textScale)
-        tvLiveEs.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f * textScale)
+        tvLiveSource.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f * textScale)
+        tvLiveTarget.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f * textScale)
         adapter.textScale = textScale
     }
 
@@ -211,6 +287,7 @@ class MainActivity : AppCompatActivity(), SpeechEngine.Listener {
         super.onDestroy()
         speech.stop()
         muteBeep(false)
+        tts?.shutdown()
         translator.close()
     }
 }

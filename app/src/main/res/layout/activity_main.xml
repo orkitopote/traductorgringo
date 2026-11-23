@@ -10,12 +10,23 @@
 
     <!-- Encabezado -->
     <TextView
+        android:id="@+id/tvTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/app_name"
         android:textColor="@color/texto"
         android:textSize="22sp"
         android:textStyle="bold" />
+
+    <!-- Cambia el sentido de la traducción -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnDirection"
+        style="@style/Widget.Material3.Button.TonalButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Inglés → Español"
+        android:textSize="16sp" />
 
     <TextView
         android:id="@+id/tvStatus"
@@ -55,7 +66,7 @@
                 android:id="@+id/tvLiveEn"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="English…"
+                android:hint="…"
                 android:textColor="@color/texto_suave"
                 android:textColorHint="#555C66"
                 android:textSize="16sp" />
@@ -65,7 +76,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
-                android:hint="Español…"
+                android:hint="…"
                 android:textColor="@color/texto"
                 android:textColorHint="#555C66"
                 android:textSize="24sp"

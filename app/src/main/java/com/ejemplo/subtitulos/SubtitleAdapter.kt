@@ -7,9 +7,14 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 
-class Line(val english: String, var spanish: String)
+/** Una frase escuchada (source) y su traducción (target). */
+class Line(val source: String, var target: String, val sourceIsEnglish: Boolean) {
+    val english get() = if (sourceIsEnglish) source else target
+}
 
-class SubtitleAdapter : RecyclerView.Adapter<SubtitleAdapter.Holder>() {
+class SubtitleAdapter(
+    private val onLineClick: (Line) -> Unit
+) : RecyclerView.Adapter<SubtitleAdapter.Holder>() {
 
     private val lines = mutableListOf<Line>()
     var textScale = 1f
@@ -19,8 +24,8 @@ class SubtitleAdapter : RecyclerView.Adapter<SubtitleAdapter.Holder>() {
         }
 
     class Holder(view: View) : RecyclerView.ViewHolder(view) {
-        val en: TextView = view.findViewById(R.id.tvEn)
-        val es: TextView = view.findViewById(R.id.tvEs)
+        val source: TextView = view.findViewById(R.id.tvEn)
+        val target: TextView = view.findViewById(R.id.tvEs)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder =
@@ -28,10 +33,11 @@ class SubtitleAdapter : RecyclerView.Adapter<SubtitleAdapter.Holder>() {
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val line = lines[position]
-        holder.en.text = line.english
-        holder.es.text = line.spanish
-        holder.en.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f * textScale)
-        holder.es.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f * textScale)
+        holder.source.text = line.source
+        holder.target.text = line.target
+        holder.source.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f * textScale)
+        holder.target.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f * textScale)
+        holder.itemView.setOnClickListener { onLineClick(line) }
     }
 
     override fun getItemCount() = lines.size
@@ -52,5 +58,5 @@ class SubtitleAdapter : RecyclerView.Adapter<SubtitleAdapter.Holder>() {
         notifyItemRangeRemoved(0, n)
     }
 
-    fun asText(): String = lines.joinToString("\n\n") { "${it.english}\n${it.spanish}" }
+    fun asText(): String = lines.joinToString("\n\n") { "${it.source}\n${it.target}" }
 }

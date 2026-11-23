@@ -26,6 +26,7 @@ class SpeechEngine(
     }
 
     var preferOffline = false
+    var language = "en-US"
 
     private val handler = Handler(Looper.getMainLooper())
     private var recognizer: SpeechRecognizer? = null
@@ -65,15 +66,16 @@ class SpeechEngine(
 
     private fun buildIntent() = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
-        putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-US")
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, language)
+        putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf(language))
         putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
         putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, preferOffline)
-        // Pausas más largas antes de cortar la frase (algunos motores lo ignoran)
-        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
-        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+        // Cortes de frase más rápidos = la frase final (y su traducción) llega antes
+        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 800L)
+        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 600L)
     }
 
     private fun listenNow() {
@@ -105,7 +107,7 @@ class SpeechEngine(
 
     private val recognitionListener = object : RecognitionListener {
         override fun onReadyForSpeech(params: Bundle?) {
-            listener.onStatus("🎙️ Escuchando inglés…")
+            listener.onStatus("🎙️ Escuchando…")
         }
 
         override fun onBeginningOfSpeech() {}
@@ -126,7 +128,7 @@ class SpeechEngine(
             val text = firstResult(results).ifEmpty { lastPartial }
             lastPartial = ""
             if (text.isNotEmpty()) listener.onFinal(text)
-            restart(delayMs = 50)
+            restart(delayMs = 0)
         }
 
         override fun onError(error: Int) {
@@ -144,8 +146,8 @@ class SpeechEngine(
                 SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> {
                     stop()
                     listener.onFatalError(
-                        "El reconocimiento de inglés no está disponible. " +
-                            "Instala el paquete de voz en inglés en Ajustes > Google > Voz, " +
+                        "El reconocimiento de voz para $language no está disponible. " +
+                            "Instala ese idioma en Ajustes > Google > Voz, " +
                             "o desactiva \"Preferir sin internet\"."
                     )
                 }
@@ -160,7 +162,7 @@ class SpeechEngine(
                 SpeechRecognizer.ERROR_CLIENT,
                 SpeechRecognizer.ERROR_SERVER_DISCONNECTED -> restart(delayMs = 300, recreate = true)
                 // ERROR_NO_MATCH, ERROR_SPEECH_TIMEOUT: simplemente hubo silencio
-                else -> restart(delayMs = 100)
+                else -> restart(delayMs = 0)
             }
         }
     }
