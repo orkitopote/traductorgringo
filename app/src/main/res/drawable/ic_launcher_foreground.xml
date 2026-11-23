@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Caja de subtítulos con dos líneas -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,36h48a6,6 0,0 1,6 6v24a6,6 0,0 1,-6 6H30a6,6 0,0 1,-6 -6V42a6,6 0,0 1,6 -6z" />
+    <path
+        android:fillColor="#4F8CFF"
+        android:pathData="M33,48h26v5H33zM63,48h12v5H63zM33,57h12v5H33zM49,57h26v5H49z" />
+</vector>

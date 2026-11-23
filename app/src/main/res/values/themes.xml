@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="fondo">#0E1116</color>
+    <color name="tarjeta">#1A1F27</color>
+    <color name="acento">#4F8CFF</color>
+    <color name="rojo">#E5484D</color>
+    <color name="texto">#F2F4F7</color>
+    <color name="texto_suave">#9AA3AF</color>
+
+    <style name="Theme.Subtitulos" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/acento</item>
+        <item name="android:windowBackground">@color/fondo</item>
+        <item name="android:statusBarColor">@color/fondo</item>
+        <item name="android:navigationBarColor">@color/fondo</item>
+    </style>
+</resources>
